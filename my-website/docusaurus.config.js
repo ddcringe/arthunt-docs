@@ -26,16 +26,9 @@ const config = {
   presets: [
     [
       'classic',
-      /** @type {import('@docusaurus/preset-classic').Options} */
       ({
         docs: {
           sidebarPath: './sidebars.js',
-          remarkPlugins: [
-            [
-              require('@akebifiky/remark-simple-plantuml'),
-              { baseUrl: 'https://www.plantuml.com/plantuml/svg' },
-            ],
-          ],
         },
         blog: false,
         theme: {
@@ -43,29 +36,9 @@ const config = {
         },
       }),
     ],
-    [
-      'redocusaurus',
-      {
-        specs: [
-          {
-            id: 'arthunt-api',
-            spec: 'docs/api/arthuntapi.yaml',
-            route: '/api/',
-          },
-        ],
-        theme: {
-          primaryColor: '#1a73e8',
-        },
-      },
-    ],
-  ],
-
-  plugins: [
-    'docusaurus-plugin-drawio',
   ],
 
   themeConfig:
-    /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
         title: 'ArtHunt Docs',
@@ -79,11 +52,6 @@ const config = {
             sidebarId: 'tutorialSidebar',
             position: 'left',
             label: 'Документация',
-          },
-          {
-            to: '/api/',
-            label: 'API Reference',
-            position: 'left',
           },
           {
             href: 'https://github.com/ddcringe/arthunt-docs',
@@ -100,16 +68,13 @@ const config = {
             items: [
               { label: 'Введение', to: '/docs/intro' },
               { label: 'Архитектура', to: '/docs/architecture/overview' },
-              { label: 'API Reference', to: '/api/' },
+              { label: 'API', to: '/docs/api/overview' },
             ],
           },
           {
             title: 'Проект',
             items: [
-              {
-                label: 'GitHub',
-                href: 'https://github.com/ddcringe/arthunt-docs',
-              },
+              { label: 'GitHub', href: 'https://github.com/ddcringe/arthunt-docs' },
             ],
           },
         ],
