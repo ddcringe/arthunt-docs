@@ -1,0 +1,21 @@
+# Docusaurus
+my-website/.docusaurus
+my-website/node_modules
+my-website/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp files
+~$*.docx
+~$*.xlsx
+*.html

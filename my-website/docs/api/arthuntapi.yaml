@@ -1,0 +1,1242 @@
+openapi: 3.0.3
+info:
+  title: ArtHunt API
+  version: 1.0.0
+  description: REST API платформы ArtHunt - маркетплейса для поиска творческих специалистов.
+tags:
+  - name: auth
+    description: Регистрация и аутентификация
+  - name: specialists
+    description: Профили специалистов 
+  - name: portfolio
+    description: Портфолио специалиста
+  - name: projects
+    description: Проекты заказчиков 
+  - name: responses
+    description: Отклики специалистов 
+  - name: invitations
+    description: Приглашения заказчиков 
+  - name: tags
+    description: Справочник тегов
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация нового пользователя
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь создан, письмо отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Аутентификация (получение токена)
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/confirm-email:
+    get:
+      tags: [auth]
+      summary: Подтверждение email по ссылке из письма
+      operationId: confirmEmail
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Email подтверждён
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /specialists:
+    get:
+      tags: [specialists]
+      summary: Поиск специалистов 
+      operationId: listSpecialists
+      parameters:
+        - name: q
+          in: query
+          description: Полнотекстовый поиск
+          schema:
+            type: string
+        - name: tags
+          in: query
+          description: Фильтр по тегам (массив)
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: specialization
+          in: query
+          schema:
+            $ref: '#/components/schemas/Specialization'
+        - name: min_price
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: max_price
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+            maximum: 50
+      responses:
+        '200':
+          description: Список специалистов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecialistListResponse'
+
+  /specialists/me:
+    patch:
+      tags: [specialists]
+      summary: Редактирование профиля текущего специалиста 
+      operationId: updateMyProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpecialistUpdateRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecialistProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /specialists/{id}:
+    get:
+      tags: [specialists]
+      summary: Профиль специалиста по ID
+      operationId: getSpecialist
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Профиль специалиста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecialistProfile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /specialists/{id}/portfolio:
+    get:
+      tags: [portfolio]
+      summary: Портфолио специалиста
+      operationId: getSpecialistPortfolio
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+            maximum: 50
+      responses:
+        '200':
+          description: Работы портфолио
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [portfolio]
+      summary: Добавить работу в портфолио
+      operationId: addPortfolioItem
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortfolioItemCreateRequest'
+      responses:
+        '201':
+          description: Работа добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /specialists/{id}/invitations:
+    post:
+      tags: [invitations]
+      summary: Пригласить специалиста на проект
+      operationId: inviteSpecialist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationCreateRequest'
+      responses:
+        '201':
+          description: Приглашение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invitation'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects:
+    get:
+      tags: [projects]
+      summary: Список / поиск проектов 
+      operationId: listProjects
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+        - name: min_budget
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: max_budget
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ProjectStatus'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [newest, budget_desc, budget_asc, responses_asc]
+            default: newest
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Список проектов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+
+    post:
+      tags: [projects]
+      summary: Создать проект 
+      operationId: createProject
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+      responses:
+        '201':
+          description: Проект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /projects/{id}:
+    get:
+      tags: [projects]
+      summary: Страница проекта
+      operationId: getProject
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Детали проекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [projects]
+      summary: Редактировать / закрыть проект
+      operationId: updateProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdateRequest'
+      responses:
+        '200':
+          description: Проект обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{id}/responses:
+    get:
+      tags: [responses]
+      summary: Отклики на проект 
+      operationId: listProjectResponses
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResponseStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Список откликов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseListResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [responses]
+      summary: Отклик специалиста на проект 
+      operationId: createResponse
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponseCreateRequest'
+      responses:
+        '201':
+          description: Отклик создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '409':
+          description: Повторный отклик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /my/responses:
+    get:
+      tags: [responses]
+      summary: Мои отклики
+      operationId: listMyResponses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResponseStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Мои отклики
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseListResponse'
+
+  /my/invitations:
+    get:
+      tags: [invitations]
+      summary: Входящие приглашения специалиста 
+      operationId: listMyInvitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/InvitationStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Список приглашений
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationListResponse'
+
+  /responses/{id}:
+    get:
+      tags: [responses]
+      summary: Детали отклика
+      operationId: getResponse
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Отклик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [responses]
+      summary: Обновить статус отклика 
+      operationId: updateResponse
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponseStatusUpdateRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /invitations/{id}:
+    patch:
+      tags: [invitations]
+      summary: Принять / отклонить приглашение 
+      operationId: updateInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationStatusUpdateRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invitation'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tags:
+    get:
+      tags: [tags]
+      summary: Справочник тегов
+      operationId: listTags
+      parameters:
+        - name: category
+          in: query
+          description: Категория тегов для фильтрации
+          schema:
+            $ref: '#/components/schemas/TagCategory'
+      responses:
+        '200':
+          description: Список тегов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagListResponse'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: UUID ресурса
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+
+    UserRole:
+      type: string
+      enum: [specialist, client, moderator]
+      description: Роль пользователя в системе
+
+    Specialization:
+      type: string
+      enum:
+        - photographer
+        - videographer
+        - graphic_designer
+        - ui_ux_designer
+        - motion_designer
+        - illustrator
+        - copywriter
+        - screenwriter
+        - musician
+        - other
+      description: Специализация творческого специалиста
+
+    ProjectStatus:
+      type: string
+      enum: [draft, open, in_progress, completed, closed]
+      description: |
+        draft - черновик,
+        open - открыт для откликов,
+        in_progress - специалист выбран,
+        completed - завершён,
+        closed - закрыт заказчиком
+
+    ResponseStatus:
+      type: string
+      enum: [sent, viewed, accepted, rejected]
+      description: |
+        sent - отправлен,
+        viewed - просматривается заказчиком,
+        accepted - принят,
+        rejected - отклонён
+
+    InvitationStatus:
+      type: string
+      enum: [pending, accepted, rejected]
+      description: Статус приглашения специалисту от заказчика
+
+    TagCategory:
+      type: string
+      enum: [style, genre, technique, mood, color_palette, format]
+      description: Категория тега для умного поиска
+
+    RegisterRequest:
+      type: object
+      required: [email, password, role]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          description: Мин. 8 символов, заглавные/строчные, цифра, спецсимвол
+        role:
+          $ref: '#/components/schemas/UserRole'
+        agreedToTerms:
+          type: boolean
+          description: Согласие с пользовательским соглашением
+
+    RegisterResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        message:
+          type: string
+          example: Письмо с подтверждением отправлено на указанный email
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Время жизни access-токена в секундах
+        user:
+          $ref: '#/components/schemas/UserShort'
+
+    UserShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    SpecialistProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        specialization:
+          $ref: '#/components/schemas/Specialization'
+        city:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          description: Теги специалиста (стиль, техника и т.д.)
+        priceRange:
+          $ref: '#/components/schemas/PriceRange'
+        stats:
+          $ref: '#/components/schemas/SpecialistStats'
+        createdAt:
+          type: string
+          format: date-time
+
+    SpecialistStats:
+      type: object
+      description: Статистика специалиста (вложенный объект)
+      properties:
+        portfolioCount:
+          type: integer
+        reviewsCount:
+          type: integer
+        averageRating:
+          type: number
+          format: float
+          nullable: true
+        completedProjectsCount:
+          type: integer
+
+    PriceRange:
+      type: object
+      description: Ценовой диапазон специалиста (₽/проект)
+      properties:
+        min:
+          type: integer
+          minimum: 0
+          nullable: true
+        max:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    SpecialistUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        specialization:
+          $ref: '#/components/schemas/Specialization'
+        city:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          maxLength: 2000
+          nullable: true
+        tagIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы тегов из справочника
+        priceRange:
+          $ref: '#/components/schemas/PriceRange'
+
+    SpecialistListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpecialistProfile'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PortfolioItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        specialistId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        mediaUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Ссылки на изображения/видео работы
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        createdAt:
+          type: string
+          format: date-time
+
+    PortfolioItemCreateRequest:
+      type: object
+      required: [title, mediaUrls]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        mediaUrls:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uri
+        tagIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    PortfolioListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortfolioItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        client:
+          $ref: '#/components/schemas/UserShort'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        budget:
+          $ref: '#/components/schemas/BudgetRange'
+        deadlineDays:
+          type: integer
+          description: Ожидаемый срок выполнения в днях
+          nullable: true
+        maxResponses:
+          type: integer
+          description: Максимально допустимое число откликов
+          nullable: true
+        responsesCount:
+          type: integer
+          description: Текущее число откликов
+        deliverables:
+          type: array
+          items:
+            type: string
+          description: Список ожидаемых результатов
+        createdAt:
+          type: string
+          format: date-time
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    BudgetRange:
+      type: object
+      description: Бюджетный диапазон проекта (₽)
+      properties:
+        min:
+          type: integer
+          minimum: 0
+          nullable: true
+        max:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    ProjectCreateRequest:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 200
+        description:
+          type: string
+          minLength: 20
+          maxLength: 5000
+        tagIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        budget:
+          $ref: '#/components/schemas/BudgetRange'
+        deadlineDays:
+          type: integer
+          minimum: 1
+          nullable: true
+        maxResponses:
+          type: integer
+          minimum: 1
+          nullable: true
+        deliverables:
+          type: array
+          items:
+            type: string
+        action:
+          type: string
+          enum: [publish, save_draft]
+          default: publish
+
+    ProjectUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 5000
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        budget:
+          $ref: '#/components/schemas/BudgetRange'
+        deadlineDays:
+          type: integer
+          minimum: 1
+
+    ProjectListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    Response:
+      type: object
+      description: Отклик специалиста на проект
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        specialist:
+          $ref: '#/components/schemas/UserShort'
+        coverLetter:
+          type: string
+          description: Сопроводительное письмо
+        proposedPrice:
+          type: integer
+          description: Предлагаемая цена в ₽
+          nullable: true
+        proposedDeadlineDays:
+          type: integer
+          description: Предлагаемый срок в днях
+          nullable: true
+        portfolioItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortfolioItem'
+          description: Прикреплённые работы из портфолио
+        status:
+          $ref: '#/components/schemas/ResponseStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    ResponseCreateRequest:
+      type: object
+      required: [coverLetter]
+      properties:
+        coverLetter:
+          type: string
+          minLength: 20
+          maxLength: 3000
+        proposedPrice:
+          type: integer
+          minimum: 0
+          nullable: true
+        proposedDeadlineDays:
+          type: integer
+          minimum: 1
+          nullable: true
+        portfolioItemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: ID работ из портфолио для прикрепления к отклику
+
+    ResponseStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/ResponseStatus'
+
+    ResponseListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Response'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Invitation:
+      type: object
+      description: Приглашение заказчика специалисту
+      properties:
+        id:
+          type: string
+          format: uuid
+        project:
+          $ref: '#/components/schemas/ProjectShort'
+        client:
+          $ref: '#/components/schemas/UserShort'
+        specialist:
+          $ref: '#/components/schemas/UserShort'
+        message:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/InvitationStatus'
+        rejectionReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ProjectShort:
+      type: object
+      description: Краткая информация о проекте
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        budget:
+          $ref: '#/components/schemas/BudgetRange'
+
+    InvitationCreateRequest:
+      type: object
+      required: [projectId]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        message:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    InvitationStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/InvitationStatus'
+        rejectionReason:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    InvitationListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invitation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          $ref: '#/components/schemas/TagCategory'
+
+    TagListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+
+    Pagination:
+      type: object
+      description: Метаданные пагинации
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Конфликт (повторный отклик / дублирующий email)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Ошибка валидации тела запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

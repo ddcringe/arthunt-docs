@@ -1,0 +1,383 @@
+asyncapi: 3.0.0
+
+info:
+  title: ARTHUNT — Email Notifications
+  version: 1.0.0
+  description: |
+    Асинхронный контракт доставки email-уведомлений в системе ARTHUNT.
+
+    Покрываемые пользовательские сценарии:
+      - AH-MVP-007 — специалист отправил отклик на проект заказчика
+        (заказчик получает письмо "Новый отклик на ваш проект").
+      - AH-MVP-006 — заказчик отправил приглашение специалисту
+        (специалист получает письмо "Вас пригласили в проект").
+
+    Брокер: RabbitMQ 3.13 (AMQP 0-9-1).
+    Producer: Go/Gin монолит (arthunt-api).
+    Consumer: Go-воркер notification-service (отдельный процесс).
+  contact:
+    name: ARTHUNT Platform Team
+    email: platform@arthunt.ru
+  license:
+    name: Proprietary
+
+defaultContentType: application/json
+
+servers:
+  production:
+    host: rabbitmq.arthunt.ru:5672
+    protocol: amqp
+    protocolVersion: 0-9-1
+    description: Production RabbitMQ cluster (vhost `/arthunt`)
+
+channels:
+
+  # --- Каналы-публикации (exchange + routing key) ---
+
+  responseCreated:
+    address: 'notifications.email.response.created'
+    title: Новый отклик на проект
+    description: |
+      Публикуется арт-хант API после успешной записи отклика специалиста
+      в PostgreSQL (AH-MVP-007, основной поток, шаг "publish message").
+    servers:
+      - $ref: '#/servers/production'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: arthunt.notifications
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /arthunt
+    messages:
+      responseCreated:
+        $ref: '#/components/messages/ResponseCreated'
+
+  invitationCreated:
+    address: 'notifications.email.invitation.created'
+    title: Новое приглашение специалисту
+    description: |
+      Публикуется арт-хант API после успешной записи приглашения в PostgreSQL
+      (AH-MVP-006, основной поток).
+    servers:
+      - $ref: '#/servers/production'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: arthunt.notifications
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /arthunt
+    messages:
+      invitationCreated:
+        $ref: '#/components/messages/InvitationCreated'
+
+  # --- Канал-потребитель (очередь) ---
+
+  emailNotificationsInbox:
+    address: email.notifications
+    title: Очередь писем для notification-service
+    description: |
+      Durable-очередь, привязанная к exchange `arthunt.notifications`
+      по шаблонам routing-key:
+        - notifications.email.response.created
+        - notifications.email.invitation.created
+
+      Потребитель — notification-service — забирает сообщения в режиме
+      manual-ack, рендерит HTML и отправляет письмо через SMTP-провайдера.
+    servers:
+      - $ref: '#/servers/production'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: email.notifications
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /arthunt
+    messages:
+      responseCreated:
+        $ref: '#/components/messages/ResponseCreated'
+      invitationCreated:
+        $ref: '#/components/messages/InvitationCreated'
+
+  # --- Dead Letter Queue ---
+
+  emailNotificationsDlq:
+    address: email.notifications.dlq
+    title: DLQ для упавших email-уведомлений
+    description: |
+      Сообщения попадают сюда после 3-х неуспешных попыток доставки
+      (nack без requeue). Мониторится Prometheus-алертом
+      `rabbitmq_queue_messages{queue="email.notifications.dlq"} > 0`.
+    servers:
+      - $ref: '#/servers/production'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: email.notifications.dlq
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /arthunt
+    messages:
+      responseCreated:
+        $ref: '#/components/messages/ResponseCreated'
+      invitationCreated:
+        $ref: '#/components/messages/InvitationCreated'
+
+operations:
+
+  publishResponseCreated:
+    action: send
+    channel:
+      $ref: '#/channels/responseCreated'
+    title: Публикация события "новый отклик"
+    summary: arthunt-api публикует событие после сохранения отклика
+    messages:
+      - $ref: '#/channels/responseCreated/messages/responseCreated'
+
+  publishInvitationCreated:
+    action: send
+    channel:
+      $ref: '#/channels/invitationCreated'
+    title: Публикация события "новое приглашение"
+    summary: arthunt-api публикует событие после сохранения приглашения
+    messages:
+      - $ref: '#/channels/invitationCreated/messages/invitationCreated'
+
+  consumeEmailNotifications:
+    action: receive
+    channel:
+      $ref: '#/channels/emailNotificationsInbox'
+    title: Потребление email-уведомлений
+    summary: notification-service забирает сообщения и отправляет письма
+    messages:
+      - $ref: '#/channels/emailNotificationsInbox/messages/responseCreated'
+      - $ref: '#/channels/emailNotificationsInbox/messages/invitationCreated'
+
+components:
+
+  messages:
+
+    ResponseCreated:
+      name: ResponseCreated
+      title: Событие "новый отклик на проект"
+      summary: Специалист отправил отклик на активный проект заказчика
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ResponseCreatedPayload'
+      bindings:
+        amqp:
+          contentEncoding: utf-8
+          messageType: response.created
+      examples:
+        - name: simpleResponse
+          summary: Отклик с предложенной ценой
+          payload:
+            envelope:
+              eventId: 7f1a0c62-5b1b-4d1a-9f1c-44cf2df5a111
+              eventType: response.created
+              schemaVersion: 1
+              occurredAt: '2026-07-15T10:21:44Z'
+              producer: arthunt-api
+              traceId: 0af7651916cd43dd8448eb211c80319c
+            data:
+              responseId: 3a2c0fb6-1d2e-4c0a-9a6b-8c5d7e0a12d4
+              projectId: 1b64a0f4-0a1c-4d4e-8f90-0c7a1b2c3d4e
+              projectTitle: Редизайн лендинга для студии керамики
+              recipient:
+                userId: 0c0e2d2a-5c71-4a3f-8a2f-7e9c1b3d4a55
+                email: anna.client@example.com
+                displayName: Анна Клиент
+              actor:
+                userId: 9f4e8b7a-2c9f-4f1e-b5c3-6d2e1f0a8b77
+                displayName: Михаил Дизайнер
+              proposedPrice: 45000
+              proposedCurrency: RUB
+              proposedDeadlineDays: 14
+              deepLink: https://arthunt.ru/projects/1b64a0f4-0a1c-4d4e-8f90-0c7a1b2c3d4e/responses
+
+    InvitationCreated:
+      name: InvitationCreated
+      title: Событие "новое приглашение специалисту"
+      summary: Заказчик отправил приглашение специалисту
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/InvitationCreatedPayload'
+      bindings:
+        amqp:
+          contentEncoding: utf-8
+          messageType: invitation.created
+      examples:
+        - name: invitationWithProject
+          summary: Приглашение с привязкой к проекту
+          payload:
+            envelope:
+              eventId: 2e9d1b4a-7f3c-48aa-a0e4-1b2c9de0f3c2
+              eventType: invitation.created
+              schemaVersion: 1
+              occurredAt: '2026-07-15T12:03:07Z'
+              producer: arthunt-api
+              traceId: 1bf7651916cd43dd8448eb211c80319c
+            data:
+              invitationId: b8a9e1f2-3c4d-4e5f-60a7-18b9c0d1e2f3
+              projectId: 1b64a0f4-0a1c-4d4e-8f90-0c7a1b2c3d4e
+              projectTitle: Редизайн лендинга для студии керамики
+              recipient:
+                userId: 9f4e8b7a-2c9f-4f1e-b5c3-6d2e1f0a8b77
+                email: mikhail.designer@example.com
+                displayName: Михаил Дизайнер
+              actor:
+                userId: 0c0e2d2a-5c71-4a3f-8a2f-7e9c1b3d4a55
+                displayName: Анна Клиент
+              message: Добрый день! Ваш стиль идеально подходит под наш проект.
+              deepLink: https://arthunt.ru/invitations/b8a9e1f2-3c4d-4e5f-60a7-18b9c0d1e2f3
+
+  schemas:
+
+    Envelope:
+      type: object
+      description: |
+        Общий конверт сообщений. Позволяет версионировать схему,
+        трассировать событие сквозь сервисы и обеспечивать идемпотентность
+        потребителя (по `eventId`).
+      required: [eventId, eventType, schemaVersion, occurredAt, producer]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор события (ключ идемпотентности)
+        eventType:
+          type: string
+          enum: [response.created, invitation.created]
+        schemaVersion:
+          type: integer
+          minimum: 1
+          description: Версия схемы payload-а
+          example: 1
+        occurredAt:
+          type: string
+          format: date-time
+          description: ISO-8601 (UTC) момент возникновения события
+        producer:
+          type: string
+          description: Имя сервиса-источника
+          example: arthunt-api
+        traceId:
+          type: string
+          description: OpenTelemetry trace id (W3C), опциональное поле для наблюдаемости
+
+    RecipientRef:
+      type: object
+      description: Получатель письма (денормализованный снимок на момент публикации)
+      required: [userId, email, displayName]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+          maxLength: 120
+
+    ActorRef:
+      type: object
+      description: Инициатор события (специалист для отклика, заказчик для приглашения)
+      required: [userId, displayName]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          maxLength: 120
+
+    ResponseCreatedPayload:
+      type: object
+      required: [envelope, data]
+      properties:
+        envelope:
+          $ref: '#/components/schemas/Envelope'
+        data:
+          type: object
+          required: [responseId, projectId, projectTitle, recipient, actor, deepLink]
+          properties:
+            responseId:
+              type: string
+              format: uuid
+            projectId:
+              type: string
+              format: uuid
+            projectTitle:
+              type: string
+              maxLength: 200
+            recipient:
+              $ref: '#/components/schemas/RecipientRef'
+              description: Заказчик — владелец проекта
+            actor:
+              $ref: '#/components/schemas/ActorRef'
+              description: Специалист, отправивший отклик
+            proposedPrice:
+              type: integer
+              minimum: 0
+              nullable: true
+              description: Предложенная специалистом цена (если указана)
+            proposedCurrency:
+              type: string
+              enum: [RUB]
+              default: RUB
+              nullable: true
+            proposedDeadlineDays:
+              type: integer
+              minimum: 1
+              nullable: true
+            deepLink:
+              type: string
+              format: uri
+              description: Ссылка на отклик в кабинете заказчика
+
+    InvitationCreatedPayload:
+      type: object
+      required: [envelope, data]
+      properties:
+        envelope:
+          $ref: '#/components/schemas/Envelope'
+        data:
+          type: object
+          required: [invitationId, recipient, actor, deepLink]
+          properties:
+            invitationId:
+              type: string
+              format: uuid
+            projectId:
+              type: string
+              format: uuid
+              nullable: true
+              description: null, если приглашение без привязки к проекту (AH-MVP-006, поток А.1)
+            projectTitle:
+              type: string
+              maxLength: 200
+              nullable: true
+            recipient:
+              $ref: '#/components/schemas/RecipientRef'
+              description: Специалист, получающий приглашение
+            actor:
+              $ref: '#/components/schemas/ActorRef'
+              description: Заказчик, отправивший приглашение
+            message:
+              type: string
+              maxLength: 2000
+              description: Сопроводительное сообщение заказчика
+            deepLink:
+              type: string
+              format: uri
+              description: Ссылка на приглашение в кабинете специалиста
